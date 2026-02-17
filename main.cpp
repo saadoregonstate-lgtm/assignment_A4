@@ -1,7 +1,7 @@
-#include <string>
 #include <iostream>
-#include <stdexcept>
+#include <string>
 #include "classes.h"
+#include <stdexcept>
 
 using namespace std;
 
@@ -9,23 +9,15 @@ int main(int argc, char* argv[]) {
 
     LinearHashIndex hashIndex("EmployeeIndex.dat");
 
+    // Build index
     hashIndex.createFromFile("Employee.csv");
 
-    if (argc < 2) {
-        cout << "Please provide employee IDs as command-line arguments." << endl;
-        return 1;
-    }
-
+    // Search IDs passed as arguments
     for (int i = 1; i < argc; i++) {
-        try {
-            int empId = stoi(argv[i]);
-            cout << "Searching for Employee ID: " << empId << endl;
-            hashIndex.findAndPrintEmployee(empId);
-        }
-        catch (invalid_argument&) {
-            cout << "Invalid employee ID: " << argv[i] << endl;
-        }
+        int id = stoi(argv[i]);
+        cout << "\nSearching for ID: " << id << endl;
+        hashIndex.findAndPrintEmployee(id);
     }
 
     return 0;
-}
+}  
