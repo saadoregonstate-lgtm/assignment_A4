@@ -218,9 +218,85 @@ private:
     }
 
     void OverflowHandler() {
-        // YOU must implement bucket split + redistribution here
-        // Trigger when average records per bucket exceeds 70%
+    // Compute average records per main page
+    double avgRecordsPerPage = (double)numRecords / n;
+
+    // Approximate threshold: 70% of page capacity
+    const int PAGE_CAPACITY_ESTIMATE = 4096 / ((4+4) + (200+500)/2); // rough average record size
+    const double THRESHOLD = 0.7 * PAGE_CAPACITY_ESTIMATE;
+
+    if (avgRecordsPerPage <= THRESHOLD)
+        return; // No split needed
+
+    // Split the next bucket (pointed by n)
+    int splitBucket = n;
+
+    // Prepare to redistribute records
+    fstream indexFile(fileName, ios::binary | ios::in | ios::out);
+
+    // Read the bucket page to split
+    Page oldPage;
+    indexFile.seekg(splitBucket * Page_SIZE);
+    oldPage.read_from_data_file(indexFile);
+
+    // Clear old page and reset overflow
+    oldPage.records.clear();
+    oldPage.slot_directory.clear();
+    oldPage.overflowPointerIndex = -1;
+
+    // Increment n and i if needed
+    n++;
+    if (n > (1 << i)) i++;
+
+    // We need to redistribute all records from old bucket + overflow chain
+    vector<Record> allRecords;
+
+    int currentPageIndex = splitBucket;
+    while (currentPageIndex != -1) {
+        Page page;
+        indexFile.seekg(currentPageIndex * Page_SIZE);
+        page.read_from_data_file(indexFile);
+
+        for (auto &r : page.records)
+            allRecords.push_back(r);
+
+        currentPageIndex = page.overflowPointerIndex;
     }
+
+    // Clear old bucket
+    Page clearedPage;
+    indexFile.seekp(splitBucket * Page_SIZE);
+    clearedPage.write_into_data_file(indexFile);
+
+    // Redistribute records
+    for (auto &r : allRecords) {
+        int newBucket = get_bucket(r.id);
+
+        Page page;
+        indexFile.seekg(newBucket * Page_SIZE);
+        page.read_from_data_file(indexFile);
+
+        if (!page.insert_record_into_page(r)) {
+            // Allocate overflow page
+            int overflowPageIndex = allocateOverflowPage();
+            page.overflowPointerIndex = overflowPageIndex;
+
+            indexFile.seekp(newBucket * Page_SIZE);
+            page.write_into_data_file(indexFile);
+
+            // Write record into new overflow page
+            Page overflowPage;
+            overflowPage.insert_record_into_page(r);
+            indexFile.seekp(overflowPageIndex * Page_SIZE);
+            overflowPage.write_into_data_file(indexFile);
+        } else {
+            indexFile.seekp(newBucket * Page_SIZE);
+            page.write_into_data_file(indexFile);
+        }
+    }
+
+    indexFile.close();
+}
 
 public:
     LinearHashIndex(string fname) {
